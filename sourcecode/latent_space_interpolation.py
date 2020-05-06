@@ -51,6 +51,10 @@ def parse_arguments():
                         default="interp_animation_frames/",
                         help="path to the output directory for the frames")
 
+    parser.add_argument("--final_layer", action="store", type=bool,
+                        default=False,
+                        help="Use only the final layer for latent space interpolation")
+
     args = parser.parse_args()
 
     return args
@@ -63,13 +67,15 @@ def adjust_dynamic_range(data, drange_in=(-1, 1), drange_out=(0, 1)):
     return th.clamp(data, min=0, max=1)
 
 
-def get_image(gen, point):
+def get_image(gen, point, final_layer):
     images = list(map(lambda x: x.detach(), gen(point)))
     images = [adjust_dynamic_range(image) for image in images]
     images = progressive_upscaling(images)
     # discard 128_x_128 resolution (temporarily)
     images = images[:-2] + images[-1:]
     images = list(map(lambda x: x.squeeze(dim=0), images))
+    if final_layer:
+      return images[-1].cpu().numpy().transpose(1, 2, 0)
     image = make_grid(
         images,
         nrow=int(ceil(sqrt(len(images)))),
@@ -117,7 +123,7 @@ def main(args):
         latent = th.unsqueeze(latent, dim=0)
 
         # generate the image for this point:
-        img = get_image(generator, latent)
+        img = get_image(generator, latent, args.final_layer)
 
         # save the image:
         plt.imsave(os.path.join(args.out_dir, str(global_frame_counter) + ".png"), img)
